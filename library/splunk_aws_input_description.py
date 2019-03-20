@@ -34,7 +34,19 @@ class SplunkInputDescription(Splunk_TA_AWS):
             'iam_users/3600'
         )
 
-    def data(self):
+    def parse_response(self, response):
+        return dict(
+            name=response['name'],
+            aws_iam_role=response['content'].get('aws_iam_role', ''),
+            account=response['content']['account'],
+            index=response['content']['index'],
+            sourcetype=response['content']['sourcetype'],
+            region=response['content']['regions'].split(','),
+            apis=list(map(lambda x:x.strip(), response['content']['apis'].split(","))),
+            disabled=as_bool(response['content']['disabled']),
+        )
+
+    def uri_data(self):
         return dict(
             output_mode='json',
             account=self.module.params['account'],
@@ -45,25 +57,11 @@ class SplunkInputDescription(Splunk_TA_AWS):
             apis=','.join(self.module.params['apis']),
         )
 
-    def get_all(self):
-        for content in self.get_paginated(self.base_endpoint, headers=self.default_headers()):
-            for d in content['entry']:
-                yield {
-                    'name': d['name'],
-                    'aws_iam_role': d['content'].get('aws_iam_role', ''),
-                    'account': d['content']['account'],
-                    'index': d['content']['index'],
-                    'sourcetype': d['content']['sourcetype'],
-                    'region': d['content']['regions'].split(','),
-                    'apis': list(map(lambda x:x.strip(), d['content']['apis'].split(","))),
-                    'disabled': as_bool(d['content']['disabled']),
-                }
-
-    def diff(self):
+    def run_module(self):
         if len(self.module.params['apis']) == 0:
             self.module.params['apis'] = self._default_apis
 
-        super(SplunkInputDescription, self).diff()
+        super(SplunkInputDescription, self).run_module()
 
 def main():
     argument_spec = shared_arguments()
@@ -79,7 +77,7 @@ def main():
 
     module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=False)
     desc = SplunkInputDescription(module)
-    desc.diff()
+    desc.run_module()
 
 if __name__ == '__main__':
     main()

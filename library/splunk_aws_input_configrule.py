@@ -14,7 +14,20 @@ class SplunkInputConfigrule(Splunk_TA_AWS):
         super(SplunkInputConfigrule, self).__init__(module)
         self.base_endpoint = "{}/{}" . format(self.module.params['url'], 'services/splunk_ta_aws_aws_config_rule')
 
-    def data(self):
+    def parse_response(self, response):
+        return dict(
+            name=response['name'],
+            aws_iam_role=response['content'].get('aws_iam_role', ''),
+            polling_interval=response['content'].get('polling_interval', 300),
+            account=response['content']['account'],
+            index=response['content']['index'],
+            sourcetype=response['content']['sourcetype'],
+            region=json.loads(response['content']['region']),
+            rule_names=json.loads(response['content']['rule_names']),
+            disabled=as_bool(response['content']['disabled']),
+        )
+
+    def uri_data(self):
         return dict(
             output_mode='json',
             account=self.module.params['account'],
@@ -25,25 +38,6 @@ class SplunkInputConfigrule(Splunk_TA_AWS):
             region=json.dumps(self.module.params['region']),
             rule_names=json.dumps(self.module.params['rule_names']),
         )
-
-    def get_all(self):
-        # url = self.module.params['url']
-
-        # url = "{}/{}" . format(url, 'services/splunk_ta_aws_aws_config_rule?output_mode=json')
-        for content in self.get_paginated(self.base_endpoint, headers=self.default_headers()):
-            for a in content['entry']:
-                yield { 
-                    'name': a['name'],
-                    'aws_iam_role': a['content'].get('aws_iam_role', ''),
-                    'polling_interval': a['content'].get('polling_interval', 300),
-                    'account': a['content']['account'],
-                    'index': a['content']['index'],
-                    'sourcetype': a['content']['sourcetype'],
-                    'region': json.loads(a['content']['region']),
-                    'rule_names': json.loads(a['content']['rule_names']),
-                    'disabled': as_bool(a['content']['disabled']),
-                }
-
 
 def main():
     argument_spec = shared_arguments()
@@ -60,7 +54,7 @@ def main():
 
     module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=False)
     rule = SplunkInputConfigrule(module)
-    rule.diff()
+    rule.run_module()
 
 if __name__ == '__main__':
     main()

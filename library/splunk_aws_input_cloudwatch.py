@@ -14,7 +14,24 @@ class SplunkInputCloudwatch(Splunk_TA_AWS):
         super(SplunkInputCloudwatch, self).__init__(module)
         self.base_endpoint = "{}/{}".format(self.module.params['url'], 'services/splunk_ta_aws_aws_cloudwatch')
     
-    def data(self):
+    def parse_response(self, response):
+        return dict(
+            name=response['name'],
+            aws_iam_role=response['content'].get('aws_iam_role', ''),
+            account=response['content']['aws_account'], # Do note the name difference here.
+            index=response['content']['index'],
+            sourcetype=response['content']['sourcetype'],
+            region=response['content']['aws_region'].split(','), # Do note the name difference here.
+            polling_interval=response['content']['polling_interval'],
+            period=response['content']['period'],
+            metric_namespace=json.loads(response['content']['metric_namespace']),
+            metric_names=self.decode_nested_json(response['content']['metric_names']),
+            metric_dimensions=self.decode_nested_json(response['content']['metric_dimensions']),
+            statistics=self.decode_nested_json(response['content']['statistics']),
+            disabled=as_bool(response['content']['disabled']),
+        )
+
+    def uri_data(self):
         return dict(
             output_mode='json',
             aws_account=self.module.params['account'], # Do note the name difference here.
@@ -30,26 +47,7 @@ class SplunkInputCloudwatch(Splunk_TA_AWS):
             statistics=self.encode_nested_json(self.module.params['statistics']),
         )
 
-    def get_all(self):
-        for content in self.get_paginated(self.base_endpoint, headers=self.default_headers()):
-            for c in content['entry']:
-                yield {
-                    'name': c['name'],
-                    'aws_iam_role': c['content'].get('aws_iam_role', ''),
-                    'account': c['content']['aws_account'], # Do note the name difference here.
-                    'index': c['content']['index'],
-                    'sourcetype': c['content']['sourcetype'],
-                    'region': c['content']['aws_region'].split(','), # Do note the name difference here.
-                    'polling_interval': c['content']['polling_interval'],
-                    'period': c['content']['period'],
-                    'metric_namespace': json.loads(c['content']['metric_namespace']),
-                    'metric_names': self.decode_nested_json(c['content']['metric_names']),
-                    'metric_dimensions': self.decode_nested_json(c['content']['metric_dimensions']),
-                    'statistics': self.decode_nested_json(c['content']['statistics']),
-                    'disabled': as_bool(c['content']['disabled']),
-                }
-
-    def diff(self):
+    def run_module(self):
         default_metrics = self.default_metrics()
 
         if len(self.module.params['metric_namespace']) == 0:
@@ -61,10 +59,10 @@ class SplunkInputCloudwatch(Splunk_TA_AWS):
         if len(self.module.params['statistics']) == 0:  
             self.module.params['statistics'] = default_metrics['statistics']
 
-        super(SplunkInputCloudwatch, self).diff()
+        super(SplunkInputCloudwatch, self).run_module()
 
     def add(self):
-        data = self.data()
+        data = self.uri_data()
         data.update(
             name=self.module.params['name'],
         )
@@ -148,7 +146,7 @@ def main():
 
     module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=False)
     desc = SplunkInputCloudwatch(module)
-    desc.diff()
+    desc.run_module()
 
 if __name__ == '__main__':
     main()

@@ -12,24 +12,27 @@ import json
 class SplunkIAMRole(Splunk_TA_AWS):
 	def __init__(self, module):
 		super(SplunkIAMRole, self).__init__(module)
-		self.base_endpoint = "{}/{}".format(self.module.params['url'], 'services/splunk_ta_aws/settings/splunk_ta_aws_iam_role')
+		# self.base_endpoint = "{}/{}".format(self.module.params['url'], 'services/splunk_ta_aws/settings/splunk_ta_aws_iam_role')
 
-	def data(self):
+		# Weirdness going on with the url above. Any iam account created through the API was given an app context of 'search' and was explicvitly owned by admin
+		# This meant the role would not show up in the GUI and could not be used in the GUI (But is was able to be fetched through the API)
+		# As a workaround we explicitly use the user=nobody, app=Splunk_TA_aws endpoint to ensure any account we create ends up in the right app and is visible.
+		self.base_endpoint = "{}/{}".format(self.module.params['url'], 'servicesNS/nobody/Splunk_TA_aws/splunk_ta_aws/settings/splunk_ta_aws_iam_role')
+
+	def parse_response(self, response):
+		return dict(
+			name=response['name'],
+			arn=response['content']['arn'],
+		)
+
+	def uri_data(self):
 		return dict(
 			output_mode='json',
 			arn=self.module.params['arn'],
 		)
 
-	def get_all(self):
-		for content in self.get_paginated(self.base_endpoint, headers=self.default_headers()):
-			for a in content['entry']:
-				yield { 
-					'name': a['name'],
-					'arn': a['content']['arn'],
-				}
-
 	def add(self):
-		data = self.data()
+		data = self.uri_data()
 		data.update(
 			name=self.module.params['name'],
 		)
@@ -49,7 +52,7 @@ def main():
 
 	module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=False)
 	role = SplunkIAMRole(module)
-	role.diff()
+	role.run_module()
 
 if __name__ == '__main__':
     main()

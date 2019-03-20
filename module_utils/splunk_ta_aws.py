@@ -74,8 +74,10 @@ class Splunk_TA_AWS(object):
 		err = r['messages'][0]
 		self.module.fail_json(msg="{}: {}".format(err['type'], err['text']))		
 
-	def get_all(self):
-		return None
+	# def get_all(self):
+	# 	for content in self.get_paginated(self.base_endpoint, headers=self.default_headers()):
+	# 		for c in content['entry']:
+	# 			yield self.parse_response(c)
 
 	def should_disable(self):
 		return self.module.params.get('state', '') == 'disabled'
@@ -83,7 +85,12 @@ class Splunk_TA_AWS(object):
 	def should_delete(self):
 		return self.module.params.get('state', '') == 'absent'	
 
-	def diff(self):
+	def write_cache_file(self):
+		with open('/tmp/'+self.module._name, 'w') as f:
+			f.write(json.dumps(list(self.get_all())))
+
+	def run_module(self):
+		# self.write_cache_file()
 		update = False
 
 		should_delete = self.should_delete()
@@ -107,7 +114,7 @@ class Splunk_TA_AWS(object):
 			if k == 'disabled':
 				continue
 			
-			self.module.log("{} = {} ({})" . format(k, v, self.module.params.get(k, "")))
+			# self.module.log("{} = {} ({})" . format(k, v, self.module.params.get(k, "")))
 			if type(v) == list:
 				cur = self.module.params.get(k, [])
 
@@ -123,21 +130,36 @@ class Splunk_TA_AWS(object):
 			elif str(self.module.params.get(k, '')) != str(v):
 				update = True
 		
-			self.module.log(str(update))
+			# self.module.log(str(update))
 
 		if update:
 			self.update()
 
 		self.module.exit_json(changed=False)
 
+	# def get_single(self):
+	# 	for i in self.get_all():
+	# 		if i['name'] == self.module.params['name']:
+	# 			return i
+	# 	return None
+
 	def get_single(self):
-		for i in self.get_all():
-			if i['name'] == self.module.params['name']:
-				return i
-		return None
+		url = "{}/{}?output_mode=json".format(self.base_endpoint, self.module.params['name'])
+		resp, info = fetch_url(self.module, url, headers=self.default_headers(), method='GET', timeout=120)
+		if info['status'] == 200:
+			content = json.loads(resp.read())
+			return self.parse_response(content['entry'][0])
+		elif info['status'] == 404:
+			return None	
+		# The API returns a 500 error on some endpoints instead of an 404 if the entry is not found.
+		# The error message returned does contain a message we can match
+		elif '[404]:' in info['body']:
+			return None
+		else:
+			self.parseErrorResponse(info)
 
 	def add(self):
-		data = self.data()
+		data = self.uri_data()
 		data.update(
 			name=self.module.params['name'],
 			disabled='1' if self.should_disable() else '0',

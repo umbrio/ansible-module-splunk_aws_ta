@@ -14,26 +14,33 @@ class SplunkAWSAccount(Splunk_TA_AWS):
 		super(SplunkAWSAccount, self).__init__(module)
 		self.base_endpoint = "{}/{}".format(self.module.params['url'], 'services/splunk_ta_aws/settings/account')
 
-	def data(self):
-		return dict (
+	def uri_data(self):
+		return dict(
 			output_mode='json',
 			key_id=self.module.params['key_id'],
 			secret_key=self.module.params['secret_key'],
 			category=self.module.params.get('category', 1),
 		)
 
-	def get_all(self):
-		for content in self.get_paginated(self.base_endpoint, headers=self.default_headers()):
-			for a in content['entry']:
-				yield { 
-					"name": a['name'],
-					"secret_key": a['content']['secret_key'],
-					"key_id": a['content']['key_id'],
-					"category": a['content']['category'],
-				}
+	def parse_response(self, response):
+		return dict( 
+			name=response['name'],
+			secret_key=response['content']['secret_key'],
+			key_id=response['content']['key_id'],
+			category=response['content']['category'],
+		)
+
+	def get_single(self):
+		url = "{}/{}?output_mode=json".format(self.base_endpoint, self.module.params['name'])
+		resp, info = fetch_url(self.module, url, headers=self.default_headers(), method='GET', timeout=120)
+		if info['status'] == 200:
+			content = json.loads(resp.read())
+			return self.parse_response(content['entry'][0])		
+		else:
+			return None
 
 	def add(self):
-		data = self.data()
+		data = self.uri_data()
 		data.update(
 			name=self.module.params['name'],
 		)
@@ -54,7 +61,7 @@ def main():
 
 	module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=False)
 	account = SplunkAWSAccount(module)
-	account.diff()
+	account.run_module()
 
 if __name__ == '__main__':
     main()
